@@ -1,0 +1,15 @@
+services:
+  localstack:
+    image: localstack/localstack:4.5
+    container_name: elastic-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb,s3,sqs
+      - AWS_DEFAULT_REGION=us-east-1
+      - DEBUG=0
+    volumes:
+      - localstack-data:/var/lib/localstack
+
+volumes:
+  localstack-data:

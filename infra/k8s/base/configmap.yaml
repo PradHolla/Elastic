@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elastic-runtime-config
+data:
+  ELASTIC_STORE_BACKEND: dynamodb
+  ELASTIC_JOBS_TABLE_NAME: elastic-jobs
+  ELASTIC_INPUT_BUCKET_NAME: elastic-inputs
+  ELASTIC_INGEST_QUEUE_NAME: elastic-ingest
+  ELASTIC_AWS_REGION: us-east-1
+  ELASTIC_AUTO_CREATE_JOBS_TABLE: "false"
+  ELASTIC_AUTO_CREATE_INPUT_BUCKET: "false"
+  ELASTIC_AUTO_CREATE_INGEST_QUEUE: "false"
+  ELASTIC_AUTO_CONFIGURE_BUCKET_NOTIFICATIONS: "false"

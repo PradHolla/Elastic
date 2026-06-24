@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elastic-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elastic-worker
+  template:
+    metadata:
+      labels:
+        app: elastic-worker
+    spec:
+      serviceAccountName: elastic-worker
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: worker
+          image: elastic-worker:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "apps.worker.app.main"]
+          args: ["--loop", "--wait-time-seconds", "5"]
+          envFrom:
+            - configMapRef:
+                name: elastic-runtime-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
