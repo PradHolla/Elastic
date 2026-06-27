@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: elastic
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - keda-scaledobject.yaml
+
+images:
+  - name: elastic-api
+    newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/elastic-api
+    newTag: dev
+  - name: elastic-worker
+    newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/elastic-worker
+    newTag: dev
+  - name: elastic-web
+    newName: 111111111111.dkr.ecr.us-east-1.amazonaws.com/elastic-web
+    newTag: dev
+
+patches:
+  - path: patches/runtime-config.yaml
+  - path: patches/api-serviceaccount-irsa.yaml
+  - path: patches/worker-serviceaccount-irsa.yaml
+  - path: patches/worker-autoscaled-deployment.yaml

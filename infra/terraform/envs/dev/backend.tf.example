@@ -1,0 +1,9 @@
+terraform {
+  backend "s3" {
+    bucket         = "replace-with-bootstrap-state-bucket"
+    key            = "envs/dev/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "replace-with-bootstrap-lock-table"
+    encrypt        = true
+  }
+}

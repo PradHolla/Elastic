@@ -87,6 +87,7 @@ This repo starts with a design-first workflow:
 
 - [docs/architecture.md](docs/architecture.md): system boundary, data flow, guarantees, and failure model
 - [docs/mvp.md](docs/mvp.md): implementation contract for the first buildable version
+- [docs/aws-deploy.md](docs/aws-deploy.md): AWS deployment runbook, management commands, and teardown flow
 
 Once those docs are accepted, the codebase will grow into:
 

@@ -1,0 +1,85 @@
+{
+  "api_ecr_repository_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "123456789012.dkr.ecr.us-east-1.amazonaws.com/elastic-dev-api"
+  },
+  "api_role_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:iam::123456789012:role/elastic-dev-api"
+  },
+  "app_runtime_config": {
+    "sensitive": false,
+    "type": [
+      "object",
+      {
+        "ELASTIC_AUTO_CONFIGURE_BUCKET_NOTIFICATIONS": "string",
+        "ELASTIC_AUTO_CREATE_INGEST_QUEUE": "string",
+        "ELASTIC_AUTO_CREATE_INPUT_BUCKET": "string",
+        "ELASTIC_AUTO_CREATE_JOBS_TABLE": "string",
+        "ELASTIC_AWS_REGION": "string",
+        "ELASTIC_INGEST_QUEUE_NAME": "string",
+        "ELASTIC_INPUT_BUCKET_NAME": "string",
+        "ELASTIC_JOBS_TABLE_NAME": "string",
+        "ELASTIC_STORE_BACKEND": "string"
+      }
+    ],
+    "value": {
+      "ELASTIC_AUTO_CONFIGURE_BUCKET_NOTIFICATIONS": "false",
+      "ELASTIC_AUTO_CREATE_INGEST_QUEUE": "false",
+      "ELASTIC_AUTO_CREATE_INPUT_BUCKET": "false",
+      "ELASTIC_AUTO_CREATE_JOBS_TABLE": "false",
+      "ELASTIC_AWS_REGION": "us-east-1",
+      "ELASTIC_INGEST_QUEUE_NAME": "elastic-dev-ingest",
+      "ELASTIC_INPUT_BUCKET_NAME": "elastic-dev-media-123456789012-us-east-1",
+      "ELASTIC_JOBS_TABLE_NAME": "elastic-dev-jobs",
+      "ELASTIC_STORE_BACKEND": "dynamodb"
+    }
+  },
+  "aws_region": {
+    "sensitive": false,
+    "type": "string",
+    "value": "us-east-1"
+  },
+  "cluster_name": {
+    "sensitive": false,
+    "type": "string",
+    "value": "elastic-dev-eks"
+  },
+  "keda_role_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:iam::123456789012:role/elastic-dev-keda"
+  },
+  "ingest_queue_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "https://sqs.us-east-1.amazonaws.com/123456789012/elastic-dev-ingest"
+  },
+  "load_balancer_controller_role_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:iam::123456789012:role/elastic-dev-aws-load-balancer-controller"
+  },
+  "vpc_id": {
+    "sensitive": false,
+    "type": "string",
+    "value": "vpc-0123456789abcdef0"
+  },
+  "web_ecr_repository_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "123456789012.dkr.ecr.us-east-1.amazonaws.com/elastic-dev-web"
+  },
+  "worker_ecr_repository_url": {
+    "sensitive": false,
+    "type": "string",
+    "value": "123456789012.dkr.ecr.us-east-1.amazonaws.com/elastic-dev-worker"
+  },
+  "worker_role_arn": {
+    "sensitive": false,
+    "type": "string",
+    "value": "arn:aws:iam::123456789012:role/elastic-dev-worker"
+  }
+}
