@@ -98,12 +98,18 @@ def test_dynamodb_store_transitions_jobs_conditionally() -> None:
             "TableName": "elastic-jobs",
             "Key": {"job_id": {"S": "job-123"}},
             "ConditionExpression": "(#status = :expected_0)",
-            "UpdateExpression": "SET #status = :new_status, #updated_at = :updated_at, #attempt_count = #attempt_count + :attempt_delta REMOVE #last_error",
+            "UpdateExpression": (
+                "SET #status = :new_status, #updated_at = :updated_at, "
+                "#attempt_count = #attempt_count + :attempt_delta "
+                "REMOVE #lease_owner, #lease_expires_at, #last_error"
+            ),
             "ExpressionAttributeNames": {
                 "#status": "status",
                 "#updated_at": "updated_at",
                 "#attempt_count": "attempt_count",
                 "#last_error": "last_error",
+                "#lease_owner": "lease_owner",
+                "#lease_expires_at": "lease_expires_at",
             },
             "ExpressionAttributeValues": {
                 ":new_status": {"S": "PROCESSING"},

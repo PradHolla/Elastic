@@ -3,6 +3,10 @@ from __future__ import annotations
 import argparse
 import signal
 
+from apps.api.app.settings import get_settings
+from apps.common.metrics import start_metrics_server
+from apps.common.obs import setup_logging
+
 from .service import build_worker_context, poll_once, run_worker_loop
 
 
@@ -32,7 +36,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    context = build_worker_context()
+    settings = get_settings()
+    setup_logging(json_logs=settings.log_json)
+    if settings.metrics_enabled:
+        start_metrics_server(settings.metrics_port)
+
+    context = build_worker_context(settings)
     _install_signal_handlers(context.shutdown_event)
 
     if args.once:

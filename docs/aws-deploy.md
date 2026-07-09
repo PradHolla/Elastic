@@ -127,6 +127,23 @@ terraform apply
 
 This step creates the expensive pieces, including EKS.
 
+### Applying The Lease/Reconciler Update To An Existing Environment
+
+If the environment was created before the lease-and-reconciler changes, a
+fresh `terraform plan` will show three in-place, non-destructive updates:
+
+- `aws_dynamodb_table.jobs`: adds the `status-updated_at-index` GSI (DynamoDB
+  builds it online; existing job items are untouched).
+- `aws_iam_role_policy.api`: swaps `dynamodb:Scan` for `dynamodb:Query` (table
+  plus indexes), adds `s3:AbortMultipartUpload`, and adds
+  `sqs:SendMessage`/`sqs:GetQueueUrl` so the reconciler can requeue jobs.
+- No worker policy changes.
+
+After applying, rebuild and push both images (step 4) and re-apply the
+overlay (step 7) so pods pick up the new config keys
+(`ELASTIC_RECONCILER_ENABLED`, `ELASTIC_LEASE_DURATION_SECONDS`,
+`ELASTIC_LOG_JSON`, `ELASTIC_METRICS_ENABLED`, `ELASTIC_MAX_ATTEMPTS`).
+
 If an apply is interrupted while EKS is creating, check status:
 
 ```bash
@@ -243,6 +260,172 @@ Open:
 
 ```text
 http://<ADDRESS>
+```
+
+## AWS Validation Checklist
+
+Use this section after deployment to verify that the live AWS system is healthy.
+
+Check EKS and Spot node group state:
+
+```bash
+aws eks describe-cluster \
+  --region us-east-1 \
+  --name elastic-dev-eks \
+  --query '{name:cluster.name,status:cluster.status,version:cluster.version,endpoint:cluster.endpoint}' \
+  --output json
+
+aws eks describe-nodegroup \
+  --region us-east-1 \
+  --cluster-name elastic-dev-eks \
+  --nodegroup-name elastic-dev-spot \
+  --query '{status:nodegroup.status,capacityType:nodegroup.capacityType,instanceTypes:nodegroup.instanceTypes,scalingConfig:nodegroup.scalingConfig}' \
+  --output json
+```
+
+Check Kubernetes app and add-on state:
+
+```bash
+kubectl get nodes -o wide
+kubectl get pods -A -o wide
+kubectl get deploy,svc,ingress,scaledobject,hpa -n elastic -o wide
+kubectl get events -n elastic --sort-by=.lastTimestamp
+```
+
+Check the public ALB and API route. Quote URLs that contain `?`, otherwise zsh may treat them as glob patterns.
+
+```bash
+ALB_HOST="$(kubectl get ingress -n elastic elastic-web -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+
+curl -sS -o /tmp/elastic-aws-index.html -w '%{http_code} %{size_download}\n' "http://${ALB_HOST}/"
+curl -sS -i "http://${ALB_HOST}/api/healthz"
+curl -sS "http://${ALB_HOST}/api/jobs?limit=5"
+```
+
+Check AWS backing services:
+
+```bash
+aws sqs get-queue-attributes \
+  --queue-url "$(cd infra/terraform/envs/dev && terraform output -raw ingest_queue_url)" \
+  --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible ApproximateNumberOfMessagesDelayed \
+  --output json
+
+aws dynamodb scan \
+  --table-name "$(cd infra/terraform/envs/dev && terraform output -raw jobs_table_name)" \
+  --select COUNT \
+  --output json
+
+aws s3 ls "s3://$(cd infra/terraform/envs/dev && terraform output -raw media_bucket_name)" --recursive
+```
+
+Check ECR images:
+
+```bash
+aws ecr describe-images \
+  --repository-name elastic-dev/api \
+  --query 'imageDetails[].{tags:imageTags,pushed:imagePushedAt,size:imageSizeInBytes}' \
+  --output json
+
+aws ecr describe-images \
+  --repository-name elastic-dev/worker \
+  --query 'imageDetails[].{tags:imageTags,pushed:imagePushedAt,size:imageSizeInBytes}' \
+  --output json
+
+aws ecr describe-images \
+  --repository-name elastic-dev/web \
+  --query 'imageDetails[].{tags:imageTags,pushed:imagePushedAt,size:imageSizeInBytes}' \
+  --output json
+```
+
+Run a real AWS smoke job through the public ALB:
+
+```bash
+uv run python - <<'PY'
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import subprocess
+import time
+
+import boto3
+import requests
+
+alb_host = subprocess.check_output(
+    ["kubectl", "get", "ingress", "-n", "elastic", "elastic-web", "-o", "jsonpath={.status.loadBalancer.ingress[0].hostname}"],
+    text=True,
+).strip()
+api_base = f"http://{alb_host}/api"
+video = Path("fixtures/media/file_example_MP4_1920_18MG.mp4")
+
+create = requests.post(
+    f"{api_base}/jobs",
+    json={
+        "filename": video.name,
+        "content_type": "video/mp4",
+        "size_bytes": video.stat().st_size,
+        "preset": "1080p",
+    },
+    timeout=30,
+)
+print("POST /api/jobs", create.status_code)
+create.raise_for_status()
+payload = create.json()
+print(json.dumps(payload, indent=2))
+
+with video.open("rb") as fh:
+    put = requests.put(
+        payload["upload"]["url"],
+        data=fh,
+        headers=payload["upload"].get("headers", {}),
+        timeout=120,
+    )
+print("PUT presigned S3", put.status_code)
+put.raise_for_status()
+
+job_id = payload["job_id"]
+queue_url = subprocess.check_output(
+    ["terraform", "output", "-raw", "ingest_queue_url"],
+    cwd="infra/terraform/envs/dev",
+    text=True,
+).strip()
+sqs = boto3.client("sqs", region_name="us-east-1")
+
+for poll in range(1, 25):
+    job = requests.get(f"{api_base}/jobs/{job_id}", timeout=20).json()
+    attrs = sqs.get_queue_attributes(
+        QueueUrl=queue_url,
+        AttributeNames=[
+            "ApproximateNumberOfMessages",
+            "ApproximateNumberOfMessagesNotVisible",
+            "ApproximateNumberOfMessagesDelayed",
+        ],
+    )["Attributes"]
+    worker = subprocess.check_output(
+        ["kubectl", "get", "deployment", "-n", "elastic", "elastic-worker", "-o", "jsonpath={.status.replicas}/{.status.readyReplicas}"],
+        text=True,
+    )
+    print(json.dumps({
+        "poll": poll,
+        "status": job["status"],
+        "attempt_count": job["attempt_count"],
+        "sqs_visible": attrs.get("ApproximateNumberOfMessages"),
+        "sqs_in_flight": attrs.get("ApproximateNumberOfMessagesNotVisible"),
+        "worker_replicas_ready": worker,
+    }))
+    if job["status"] in {"COMPLETED", "FAILED"}:
+        break
+    time.sleep(10)
+PY
+```
+
+After a successful smoke run, confirm the worker scales down after KEDA's cooldown:
+
+```bash
+sleep 75
+kubectl get deployment -n elastic elastic-worker -o wide
+kubectl get pods -n elastic -l app=elastic-worker -o wide
+kubectl get scaledobject -n elastic elastic-worker-sqs
 ```
 
 ## Basic Management

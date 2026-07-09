@@ -21,6 +21,20 @@ export interface CreateJobRequest {
   preset: string;
 }
 
+export interface PartUploadInstruction {
+  part_number: number;
+  url: string;
+}
+
+export interface MultipartUploadInstructions {
+  upload_id: string;
+  part_size_bytes: number;
+  parts: PartUploadInstruction[];
+  complete_path: string;
+  abort_path: string;
+  expires_in_seconds: number;
+}
+
 export interface CreateJobResponse {
   job_id: string;
   status: JobStatus;
@@ -28,7 +42,8 @@ export interface CreateJobResponse {
   input_bucket: string;
   input_key: string;
   output_key: string;
-  upload: UploadInstructions;
+  upload: UploadInstructions | null;
+  multipart_upload: MultipartUploadInstructions | null;
 }
 
 export interface JobResponse {
@@ -39,6 +54,8 @@ export interface JobResponse {
   input_key: string;
   output_key: string;
   last_error: string | null;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }

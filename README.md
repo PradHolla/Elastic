@@ -6,12 +6,15 @@ The v1 system is intentionally narrow. A web dashboard or CLI asks the API for u
 
 ## What This Project Proves
 
-- Large payloads do not flow through the API server.
+- Large payloads do not flow through the API server: single presigned PUTs with a signed `Content-Length`, presigned multipart uploads above 100 MiB, and streamed worker I/O keep memory flat regardless of file size.
 - Upload and compute are decoupled through durable queueing.
 - Workers scale from zero based on queue depth.
-- Long-running jobs can tolerate pod or node interruption and retry safely.
-- DynamoDB acts as the durable source of truth for job progress.
+- Job ownership is a DynamoDB lease with fencing tokens: a hard-killed worker's job is stolen after lease expiry, and a zombie worker is fenced out of every write.
+- A reconciliation sweeper self-heals lost events, dead-lettered messages, and expired-lease jobs — no job stays stuck in a non-terminal state.
+- DynamoDB acts as the durable source of truth for job progress, queried through a status GSI rather than table scans.
+- Structured JSON logs and Prometheus metrics reconstruct one job's history across every pod that touched it.
 - A browser dashboard can create jobs, upload directly to S3, and monitor job state.
+- All of the above is demonstrated by a fault-injection script, not just claimed: `scripts/chaos_demo.py` SIGKILLs a worker mid-transcode and shows another worker steal and finish the job.
 
 ## Core MVP Story
 
@@ -45,11 +48,33 @@ flowchart LR
 Elastic is not trying to promise exactly-once compute. The system is built around more realistic guarantees:
 
 - At-least-once event delivery is expected from S3 and SQS.
-- DynamoDB conditional writes prevent conflicting state transitions.
+- DynamoDB conditional writes prevent conflicting state transitions; job ownership is a lease, and the attempt count is a fencing token that locks stale owners out of every write.
 - Workers are idempotent from the client's point of view: duplicate delivery may cause repeated attempts, but not conflicting final job state.
-- Spot interruption is treated as a normal operating condition, not an exceptional disaster.
+- Spot interruption is treated as a normal operating condition, not an exceptional disaster — graceful SIGTERM recovers in about a second, and a hard SIGKILL recovers via lease steal in roughly the visibility timeout.
+- A reconciler inside the API sweeps for jobs stuck by lost events, dead-lettered messages, or expired leases and requeues or expires them.
 
 That makes the project a good backend systems demo because the architecture is justified by failure modes, not by service-count.
+
+### Prove It
+
+With LocalStack and the API running (`uv run python scripts/dev_up.py`, workers optional since the demo spawns its own):
+
+```bash
+# Hard crash: SIGKILL mid-transcode; job is stranded PROCESSING with a dead
+# owner until the lease expires and a second worker steals it.
+uv run python scripts/chaos_demo.py --mode sigkill
+
+# Graceful Spot-style interruption: SIGTERM; the worker marks the job
+# INTERRUPTED and releases the message for near-instant retry.
+uv run python scripts/chaos_demo.py --mode sigterm
+```
+
+Both runs end with `COMPLETED after 2 attempt(s)` and print the state
+transitions (including `lease_owner` changing hands) as they happen.
+
+The same scenarios were reproduced on the real EKS deployment by
+force-deleting worker pods mid-transcode — measured timelines, DynamoDB
+forensics, and metrics are in [docs/aws-validation.md](docs/aws-validation.md).
 
 ## Demo Path
 

@@ -1,5 +1,5 @@
 import { type DragEvent, type FormEvent, useEffect, useState } from "react";
-import { createJob, getJob, listJobs, uploadToPresignedUrl } from "./api";
+import { createJob, getJob, listJobs, uploadSource } from "./api";
 import type { JobResponse, JobStatus } from "./types";
 
 const TERMINAL_STATUSES = new Set<JobStatus>(["COMPLETED", "FAILED"]);
@@ -150,8 +150,8 @@ export function App() {
       setDetailJob(null);
       await refreshJobs();
 
-      setUploadPhase("Uploading source to S3");
-      await uploadToPresignedUrl(createdJob.upload, selectedFile, (progress) => {
+      setUploadPhase(createdJob.multipart_upload ? "Uploading source to S3 (multipart)" : "Uploading source to S3");
+      await uploadSource(createdJob, selectedFile, (progress) => {
         setUploadProgress(progress);
       });
 

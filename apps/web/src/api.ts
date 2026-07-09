@@ -1,4 +1,10 @@
-import type { CreateJobRequest, CreateJobResponse, JobResponse, UploadInstructions } from "./types";
+import type {
+  CreateJobRequest,
+  CreateJobResponse,
+  JobResponse,
+  MultipartUploadInstructions,
+  UploadInstructions,
+} from "./types";
 
 const DEFAULT_API_BASE_URL = "/api";
 
@@ -82,4 +88,88 @@ export function uploadToPresignedUrl(
     xhr.onerror = () => reject(new Error("Upload failed due to a network error."));
     xhr.send(file);
   });
+}
+
+function uploadPart(url: string, blob: Blob, onBytes: (loaded: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onBytes(event.loaded);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const etag = xhr.getResponseHeader("ETag");
+        if (!etag) {
+          reject(new Error("S3 did not return an ETag for an uploaded part."));
+          return;
+        }
+        resolve(etag);
+        return;
+      }
+      reject(new Error(`Part upload failed with status ${xhr.status}.`));
+    };
+
+    xhr.onerror = () => reject(new Error("Part upload failed due to a network error."));
+    xhr.send(blob);
+  });
+}
+
+async function uploadMultipart(
+  multipart: MultipartUploadInstructions,
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  const completedParts: { part_number: number; etag: string }[] = [];
+  const bytesPerPart = new Map<number, number>();
+
+  const reportProgress = () => {
+    if (!onProgress) {
+      return;
+    }
+    let uploaded = 0;
+    for (const bytes of bytesPerPart.values()) {
+      uploaded += bytes;
+    }
+    onProgress(Math.min(uploaded / file.size, 1));
+  };
+
+  for (const part of multipart.parts) {
+    const start = (part.part_number - 1) * multipart.part_size_bytes;
+    const blob = file.slice(start, Math.min(start + multipart.part_size_bytes, file.size));
+    const etag = await uploadPart(part.url, blob, (loaded) => {
+      bytesPerPart.set(part.part_number, loaded);
+      reportProgress();
+    });
+    bytesPerPart.set(part.part_number, blob.size);
+    reportProgress();
+    completedParts.push({ part_number: part.part_number, etag });
+  }
+
+  const response = await fetch(buildApiUrl(multipart.complete_path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ upload_id: multipart.upload_id, parts: completedParts }),
+  });
+  await parseJsonResponse<JobResponse>(response);
+}
+
+export async function uploadSource(
+  job: CreateJobResponse,
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  if (job.multipart_upload) {
+    await uploadMultipart(job.multipart_upload, file, onProgress);
+    return;
+  }
+  if (job.upload) {
+    await uploadToPresignedUrl(job.upload, file, onProgress);
+    return;
+  }
+  throw new Error("Job response contained no upload instructions.");
 }

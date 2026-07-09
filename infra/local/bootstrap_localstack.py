@@ -28,9 +28,34 @@ def ensure_jobs_table(
         aws_secret_access_key=aws_secret_access_key,
     )
 
+    status_index = {
+        "IndexName": "status-updated_at-index",
+        "KeySchema": [
+            {"AttributeName": "status", "KeyType": "HASH"},
+            {"AttributeName": "updated_at", "KeyType": "RANGE"},
+        ],
+        "Projection": {"ProjectionType": "ALL"},
+    }
+    attribute_definitions = [
+        {"AttributeName": "job_id", "AttributeType": "S"},
+        {"AttributeName": "status", "AttributeType": "S"},
+        {"AttributeName": "updated_at", "AttributeType": "S"},
+    ]
+
     try:
-        client.describe_table(TableName=table_name)
-        print(f"DynamoDB table already exists: {table_name}")
+        description = client.describe_table(TableName=table_name)["Table"]
+        existing_indexes = {
+            index["IndexName"] for index in description.get("GlobalSecondaryIndexes", [])
+        }
+        if status_index["IndexName"] in existing_indexes:
+            print(f"DynamoDB table already exists: {table_name}")
+            return
+        client.update_table(
+            TableName=table_name,
+            AttributeDefinitions=attribute_definitions,
+            GlobalSecondaryIndexUpdates=[{"Create": status_index}],
+        )
+        print(f"Added {status_index['IndexName']} to existing table: {table_name}")
         return
     except ClientError as exc:
         error_code = exc.response["Error"]["Code"]
@@ -40,7 +65,8 @@ def ensure_jobs_table(
     client.create_table(
         TableName=table_name,
         KeySchema=[{"AttributeName": "job_id", "KeyType": "HASH"}],
-        AttributeDefinitions=[{"AttributeName": "job_id", "AttributeType": "S"}],
+        AttributeDefinitions=attribute_definitions,
+        GlobalSecondaryIndexes=[status_index],
         BillingMode="PAY_PER_REQUEST",
     )
     waiter = client.get_waiter("table_exists")

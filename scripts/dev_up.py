@@ -173,6 +173,7 @@ def build_runtime_env(*, localstack_mode: bool, api_base_url: str) -> dict[str, 
         env.setdefault("ELASTIC_AUTO_CREATE_INGEST_QUEUE", "true")
         env.setdefault("ELASTIC_AUTO_CONFIGURE_BUCKET_NOTIFICATIONS", "true")
         env.setdefault("ELASTIC_AWS_REGION", "us-east-1")
+        env.setdefault("ELASTIC_RECONCILER_ENABLED", "true")
 
     return env
 

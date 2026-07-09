@@ -23,6 +23,16 @@ spec:
           envFrom:
             - configMapRef:
                 name: elastic-runtime-config
+          env:
+            # Pod name doubles as the lease owner id, so DynamoDB job records
+            # show exactly which pod holds each attempt.
+            - name: ELASTIC_WORKER_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: metrics
+              containerPort: 9100
           resources:
             requests:
               cpu: 500m

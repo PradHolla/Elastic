@@ -9,6 +9,21 @@ from infra.local.bootstrap_localstack import (
     ensure_jobs_table,
 )
 
+JOBS_ATTRIBUTE_DEFINITIONS = [
+    {"AttributeName": "job_id", "AttributeType": "S"},
+    {"AttributeName": "status", "AttributeType": "S"},
+    {"AttributeName": "updated_at", "AttributeType": "S"},
+]
+
+STATUS_INDEX = {
+    "IndexName": "status-updated_at-index",
+    "KeySchema": [
+        {"AttributeName": "status", "KeyType": "HASH"},
+        {"AttributeName": "updated_at", "KeyType": "RANGE"},
+    ],
+    "Projection": {"ProjectionType": "ALL"},
+}
+
 
 def test_ensure_jobs_table_creates_table_when_missing(monkeypatch) -> None:
     client = boto3.client("dynamodb", region_name="us-east-1")
@@ -42,7 +57,8 @@ def test_ensure_jobs_table_creates_table_when_missing(monkeypatch) -> None:
         {
             "TableName": "elastic-jobs",
             "KeySchema": [{"AttributeName": "job_id", "KeyType": "HASH"}],
-            "AttributeDefinitions": [{"AttributeName": "job_id", "AttributeType": "S"}],
+            "AttributeDefinitions": JOBS_ATTRIBUTE_DEFINITIONS,
+            "GlobalSecondaryIndexes": [STATUS_INDEX],
             "BillingMode": "PAY_PER_REQUEST",
         },
     )
@@ -88,6 +104,49 @@ def test_ensure_jobs_table_skips_creation_when_table_exists(monkeypatch) -> None
                 "TableName": "elastic-jobs",
                 "TableStatus": "ACTIVE",
                 "KeySchema": [{"AttributeName": "job_id", "KeyType": "HASH"}],
+                "AttributeDefinitions": JOBS_ATTRIBUTE_DEFINITIONS,
+                "GlobalSecondaryIndexes": [
+                    {
+                        "IndexName": "status-updated_at-index",
+                        "KeySchema": STATUS_INDEX["KeySchema"],
+                        "Projection": {"ProjectionType": "ALL"},
+                        "IndexStatus": "ACTIVE",
+                    }
+                ],
+                "ProvisionedThroughput": {
+                    "NumberOfDecreasesToday": 1,
+                    "ReadCapacityUnits": 1,
+                    "WriteCapacityUnits": 1,
+                },
+                "TableSizeBytes": 0,
+                "ItemCount": 0,
+                "TableArn": "arn:aws:dynamodb:us-east-1:000000000000:table/elastic-jobs",
+                "BillingModeSummary": {"BillingMode": "PAY_PER_REQUEST"},
+                "DeletionProtectionEnabled": False,
+            }
+        },
+        {"TableName": "elastic-jobs"},
+    )
+
+    stubber.activate()
+
+    monkeypatch.setattr("infra.local.bootstrap_localstack.boto3.client", lambda *args, **kwargs: client)
+    ensure_jobs_table()
+
+    stubber.assert_no_pending_responses()
+    stubber.deactivate()
+
+
+def test_ensure_jobs_table_adds_index_to_existing_table(monkeypatch) -> None:
+    client = boto3.client("dynamodb", region_name="us-east-1")
+    stubber = Stubber(client)
+    stubber.add_response(
+        "describe_table",
+        {
+            "Table": {
+                "TableName": "elastic-jobs",
+                "TableStatus": "ACTIVE",
+                "KeySchema": [{"AttributeName": "job_id", "KeyType": "HASH"}],
                 "AttributeDefinitions": [{"AttributeName": "job_id", "AttributeType": "S"}],
                 "ProvisionedThroughput": {
                     "NumberOfDecreasesToday": 1,
@@ -102,6 +161,15 @@ def test_ensure_jobs_table_skips_creation_when_table_exists(monkeypatch) -> None
             }
         },
         {"TableName": "elastic-jobs"},
+    )
+    stubber.add_response(
+        "update_table",
+        {},
+        {
+            "TableName": "elastic-jobs",
+            "AttributeDefinitions": JOBS_ATTRIBUTE_DEFINITIONS,
+            "GlobalSecondaryIndexUpdates": [{"Create": STATUS_INDEX}],
+        },
     )
 
     stubber.activate()

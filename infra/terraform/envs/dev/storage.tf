@@ -106,4 +106,23 @@ resource "aws_dynamodb_table" "jobs" {
     name = "job_id"
     type = "S"
   }
+
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  attribute {
+    name = "updated_at"
+    type = "S"
+  }
+
+  # Serves "recent jobs by state" for the dashboard and the reconciler's
+  # staleness sweeps without scanning the whole table.
+  global_secondary_index {
+    name            = "status-updated_at-index"
+    hash_key        = "status"
+    range_key       = "updated_at"
+    projection_type = "ALL"
+  }
 }

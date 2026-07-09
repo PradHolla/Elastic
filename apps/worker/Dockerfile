@@ -17,6 +17,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY apps/api ./apps/api
+COPY apps/common ./apps/common
 COPY apps/worker ./apps/worker
 COPY infra ./infra
 

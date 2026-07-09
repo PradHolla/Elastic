@@ -141,10 +141,13 @@ data "aws_iam_policy_document" "api" {
     actions = [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
-      "dynamodb:Scan",
+      "dynamodb:Query",
       "dynamodb:UpdateItem",
     ]
-    resources = [aws_dynamodb_table.jobs.arn]
+    resources = [
+      aws_dynamodb_table.jobs.arn,
+      "${aws_dynamodb_table.jobs.arn}/index/*",
+    ]
   }
 
   statement {
@@ -152,8 +155,20 @@ data "aws_iam_policy_document" "api" {
     actions = [
       "s3:PutObject",
       "s3:GetObject",
+      "s3:AbortMultipartUpload",
     ]
     resources = ["${aws_s3_bucket.media.arn}/inputs/*"]
+  }
+
+  # The reconciler injects synthetic requeue messages when the original S3
+  # event was lost or already consumed.
+  statement {
+    sid = "ReconcilerQueueAccess"
+    actions = [
+      "sqs:GetQueueUrl",
+      "sqs:SendMessage",
+    ]
+    resources = [aws_sqs_queue.ingest.arn]
   }
 }
 

@@ -21,3 +21,4 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 infra/k8s/overlays/aws-generated/
+CLAUDE.md
